@@ -1,0 +1,73 @@
+---
+- name: Definir URLs de descarga del agente Zabbix
+  set_fact:
+    zabbix_urls:
+      Debian:
+        "11": "https://repo.zabbix.com/zabbix/7.2/stable/debian/pool/main/z/zabbix/zabbix-agent_7.2.9-1%2Bdebian11_amd64.deb"
+        "12": "https://repo.zabbix.com/zabbix/7.2/stable/debian/pool/main/z/zabbix/zabbix-agent2_7.2.9-1%2Bdebian12_amd64.deb"
+
+      # Ubuntu
+      Ubuntu:
+        "20": "https://repo.zabbix.com/zabbix/7.2/stable/ubuntu/pool/main/z/zabbix/zabbix-agent2_7.2.9-1%2Bubuntu20.04_amd64.deb"
+        "22": "https://repo.zabbix.com/zabbix/7.2/stable/ubuntu/pool/main/z/zabbix/zabbix-agent2_7.2.9-1%2Bubuntu22.04_amd64.deb"
+        "24": "https://repo.zabbix.com/zabbix/7.2/stable/ubuntu/pool/main/z/zabbix/zabbix-agent2_7.2.9-1%2Bubuntu24.04_amd64.deb"
+
+      # RHEL / CentOS / Oracle Linux
+      RedHat:
+        "7": "https://repo.zabbix.com/zabbix/7.2/stable/rhel/7/x86_64/zabbix-agent2-7.2.9-release1.el7.x86_64.rpm"
+        "8": "https://repo.zabbix.com/zabbix/7.2/stable/rhel/8/x86_64/zabbix-agent2-7.2.9-release1.el8.x86_64.rpm"
+        "9": "https://repo.zabbix.com/zabbix/7.2/stable/rhel/9/x86_64/zabbix-agent2-7.2.9-release1.el9.x86_64.rpm"
+
+      # Oracle Linux
+      OracleLinux:
+        "8": "https://repo.zabbix.com/zabbix/7.2/stable/oracle/8/x86_64/zabbix-agent2-7.2.9-release1.el8.x86_64.rpm"
+        "9": "https://repo.zabbix.com/zabbix/7.2/stable/oracle/9/x86_64/zabbix-agent2-7.2.9-release1.el9.x86_64.rpm"
+
+      # Rocky Linux
+      Rocky:
+        "8": "https://repo.zabbix.com/zabbix/7.2/stable/rocky/8/x86_64/zabbix-agent2-7.2.9-release1.el8.x86_64.rpm"
+        "9": "https://repo.zabbix.com/zabbix/7.2/stable/rocky/9/x86_64/zabbix-agent2-7.2.9-release1.el9.x86_64.rpm"
+
+      # SLES
+      SLES:
+        "12": "https://repo.zabbix.com/zabbix/7.2/stable/sles/12/x86_64/zabbix-agent2-7.2.9-release1.sles12.x86_64.rpm"
+        "15": "https://repo.zabbix.com/zabbix/7.2/stable/sles/15/x86_64/zabbix-agent2-7.2.9-release1.sles15.x86_64.rpm"
+
+- name: Validar distribución y versión
+  assert:
+    that:
+      - ansible_distribution in zabbix_urls.keys()
+      - ansible_distribution_major_version in zabbix_urls[ansible_distribution].keys()
+    fail_msg: "Distribución no soportada: {{ ansible_distribution }} {{ ansible_distribution_major_version }}"
+
+- name: Intentar descarga remota primero
+  block:
+    - name: Descargar paquete (remoto)
+      ansible.builtin.get_url:
+        url: "{{ zabbix_urls[ansible_distribution][ansible_distribution_major_version] }}"
+        dest: "/tmp/zabbix-agent2.{{ 'deb' if ansible_distribution in ['Debian', 'Ubuntu'] else 'rpm' }}"
+        mode: 0644
+      register: remote_download
+      ignore_errors: yes
+
+    - name: Verificar descarga
+      ansible.builtin.stat:
+        path: "/tmp/zabbix-agent2.{{ 'deb' if ansible_distribution in ['Debian', 'Ubuntu'] else 'rpm' }}"
+      register: pkg_file
+
+  rescue:
+    - name: Descargar en controlador si falla remoto
+      block:
+        - name: Descargar paquete (local)
+          delegate_to: localhost
+          ansible.builtin.get_url:
+            url: "{{ zabbix_urls[ansible_distribution][ansible_distribution_major_version] }}"
+            dest: "/tmp/zabbix-agent2-{{ ansible_distribution }}-{{ ansible_distribution_major_version }}.{{ 'deb' if ansible_distribution in ['Debian', 'Ubuntu'] else 'rpm' }}"
+            mode: 0644
+
+        - name: Copiar al remoto
+          ansible.builtin.copy:
+            src: "/tmp/zabbix-agent2-{{ ansible_distribution }}-{{ ansible_distribution_major_version }}.{{ 'deb' if ansible_distribution in ['Debian', 'Ubuntu'] else 'rpm' }}"
+            dest: "/tmp/zabbix-agent2.{{ 'deb' if ansible_distribution in ['Debian', 'Ubuntu'] else 'rpm' }}"
+            mode: 0644
+      when: not pkg_file.stat.exists

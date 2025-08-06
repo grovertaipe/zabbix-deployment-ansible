@@ -1,0 +1,28 @@
+---
+- name: Despliegue de agente Zabbix
+  hosts: all
+  become: true
+  vars_files:
+    - ../vars_zabbix.yml
+
+  tasks:
+    # Paso 1: Recolectar información de paquetes (versión correcta)
+    - name: Obtener lista de paquetes instalados
+      ansible.builtin.package_facts:
+        manager: auto
+      changed_when: false
+
+    # Paso 2: Descargar el paquete
+    - name: Incluir tareas de descarga
+      ansible.builtin.include_tasks: 02-download.yml
+
+    # Paso 3: Instalación condicional (sintaxis corregida)
+    - name: Incluir tareas de instalación
+      ansible.builtin.include_tasks: 03-install.yml
+      when: >
+       ('zabbix-agent' not in ansible_facts.packages.keys()) and
+       ('zabbix-agent2' not in ansible_facts.packages.keys())
+
+    # Paso 4: Configuración
+    - name: Incluir tareas de configuración
+      ansible.builtin.include_tasks: 04-configure.yml

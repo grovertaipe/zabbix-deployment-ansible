@@ -1,0 +1,56 @@
+---
+- name: Detectar tipo de agente instalado
+  ansible.builtin.shell: |
+    if [[ -f /usr/sbin/zabbix_agent2 ]]; then
+      echo "agent2"
+    else
+      echo "agentd"
+    fi
+  register: agent_type
+  changed_when: false
+
+- name: Configurar directorios
+  ansible.builtin.file:
+    path: "/etc/zabbix/zabbix_{{ agent_type.stdout }}.d"
+    state: directory
+    mode: 0755
+
+- name: Copiar configuración base
+  ansible.builtin.template:
+    src: "../files/template_{{ agent_type.stdout }}.conf"
+    dest: "/etc/zabbix/zabbix_{{ agent_type.stdout }}.conf"
+    mode: 0644
+
+- name: Configurar conexión al proxy
+  ansible.builtin.lineinfile:
+    path: "/etc/zabbix/zabbix_{{ agent_type.stdout }}.conf"
+    regexp: "^Server="
+    line: "Server={{ client_zabbix_proxy_secrets.zabbix_proxy }}"
+
+- name: Configurar ServerActive
+  ansible.builtin.lineinfile:
+    path: "/etc/zabbix/zabbix_{{ agent_type.stdout }}.conf"
+    regexp: "^ServerActive="
+    line: "ServerActive={{ client_zabbix_proxy_secrets.zabbix_proxy | replace(',', ';') }}"
+
+- name: Configurar HostMetadata
+  ansible.builtin.lineinfile:
+    path: "/etc/zabbix/zabbix_{{ agent_type.stdout }}.conf"
+    regexp: "^HostMetadata="
+    line: "HostMetadata={{ client_zabbix_proxy_secrets.host_meta_data }}"
+
+- name: Copiar plugins
+  ansible.builtin.copy:
+    src: "../files/{{ item }}"
+    dest: "/etc/zabbix/zabbix_{{ agent_type.stdout }}.d/plugins.d/"
+    mode: 0755
+  loop:
+    - top_cpu.sh
+    - top_memory.sh
+    - top_swap.sh
+
+- name: Habilitar servicio
+  ansible.builtin.systemd:
+    name: "zabbix-agent{{ '2' if agent_type.stdout == 'agent2' else 'd' }}"
+    enabled: yes
+    state: restarted

@@ -1,0 +1,36 @@
+---
+- name: Instalar agente en Debian/Ubuntu
+  ansible.builtin.apt:
+    deb: "/tmp/zabbix-agent2.deb"
+    allow_unauthenticated: yes  # Ignorar verificación GPG
+  when: ansible_distribution in ['Debian', 'Ubuntu']
+
+- name: Instalar agente en RHEL/Rocky/CentOS/Oracle
+  ansible.builtin.dnf:
+    name: "/tmp/zabbix-agent2.rpm"
+    disable_gpg_check: yes  # Ignorar verificación GPG
+    validate_certs: no      # No validar certificados para paquetes locales
+  when: ansible_distribution in ['RedHat', 'Rocky', 'CentOS', 'OracleLinux']
+
+- name: Instalar agente en SLES
+  ansible.builtin.zypper:
+    name: "/tmp/zabbix-agent2.rpm"
+    no_gpg_checks: yes      # Ignorar verificación GPG
+  when: ansible_distribution == 'SLES'
+
+- name: Verificar instalación
+  ansible.builtin.shell: |
+    if command -v rpm >/dev/null; then
+      rpm -q zabbix-agent2 || rpm -q zabbix-agent
+    elif command -v dpkg >/dev/null; then
+      dpkg -l zabbix-agent2 || dpkg -l zabbix-agent
+    fi
+  register: install_check
+  changed_when: false
+  ignore_errors: yes
+
+- name: Validar instalación exitosa
+  ansible.builtin.assert:
+    that:
+      - install_check.rc == 0
+    fail_msg: "El agente Zabbix no se instaló correctamente"
